@@ -3,119 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebADB - Connect Android</title>
+    <title>Custom WebADB</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
+            font-family: 'Arial', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #f0f0f0;
+            background: linear-gradient(135deg, #4f6d7a, #c0d6df);
         }
         #app {
             background: white;
+            border-radius: 15px;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            width: 400px;
-            text-align: center;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
         h1 {
-            font-size: 1.5rem;
-            margin-bottom: 20px;
+            text-align: center;
+            font-size: 2rem;
+            color: #333;
         }
-        button {
-            width: 100%;
-            padding: 10px;
+        .actions {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+        }
+        .actions button {
+            padding: 10px 20px;
             font-size: 1rem;
-            margin: 10px 0;
-            cursor: pointer;
-        }
-        textarea, pre {
-            width: 100%;
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ccc;
+            border: none;
             border-radius: 5px;
-            font-size: 1rem;
-            resize: none;
+            cursor: pointer;
+            background: #4caf50;
+            color: white;
+            transition: background 0.3s;
         }
-        textarea {
-            height: 100px;
+        .actions button:hover {
+            background: #45a049;
         }
-        pre {
-            height: 150px;
+        #device-info, #output {
             background: #f8f8f8;
-            overflow: auto;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 1rem;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        #command-input {
+            width: calc(100% - 30px);
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .upload-download {
+            margin-top: 20px;
+        }
+        .file-input {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        input[type="file"] {
+            margin-left: 10px;
         }
     </style>
 </head>
 <body>
     <div id="app">
-        <h1>WebADB 연결</h1>
-        <button id="connect-device">기기 연결</button>
-        <div id="device-info"></div>
-        <textarea id="command-input" placeholder="ADB 명령어 입력"></textarea>
-        <button id="execute-command">명령어 실행</button>
-        <pre id="command-output">결과가 여기에 표시됩니다.</pre>
+        <h1>Custom WebADB</h1>
+        <div class="actions">
+            <button id="connect-device">Connect Device</button>
+            <button id="disconnect-device" disabled>Disconnect Device</button>
+        </div>
+        <div id="device-info">Device Info: Not Connected</div>
+        <textarea id="command-input" placeholder="Enter ADB command..."></textarea>
+        <button id="execute-command">Execute Command</button>
+        <div id="output">Command Output:</div>
+        <div class="upload-download">
+            <div class="file-input">
+                <label for="file-upload">Upload File:</label>
+                <input type="file" id="file-upload">
+            </div>
+            <button id="download-file">Download File</button>
+        </div>
     </div>
 
-    <!-- ya-webadb 라이브러리를 CDN에서 로드 -->
-    <script src="https://cdn.jsdelivr.net/npm/ya-webadb/dist/adb-web.min.js"></script>
+    <!-- ya-webadb 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/ya-webadb/dist/ya-webadb.min.js"></script>
     <script>
+        let adb = null;
+
         document.getElementById('connect-device').addEventListener('click', async () => {
-            const backend = new window.AdbWebUsbBackend();
-
-            // WebUSB 지원 확인
-            if (!await backend.isSupported()) {
-                alert("이 브라우저는 WebUSB를 지원하지 않습니다. Chrome 최신 버전을 사용하세요.");
-                return;
-            }
-
             try {
-                // USB 기기 연결
+                const backend = new window.ya_webadb.AdbWebUsbBackend();
+
+                if (!await backend.isSupported()) {
+                    alert("Your browser does not support WebUSB. Use Chrome.");
+                    return;
+                }
+
                 await backend.connect();
+                adb = await window.ya_webadb.Adb.open(backend);
 
-                // ADB 인스턴스 생성
-                const adb = await window.Adb.open(backend);
+                const model = await adb.getProp('ro.product.model');
+                const serial = await adb.getSerial();
+                document.getElementById('device-info').textContent = `Device Connected: ${model} (Serial: ${serial})`;
 
-                // 기기 정보 가져오기
-                const deviceModel = await adb.getProp('ro.product.model');
-                document.getElementById('device-info').innerText = `연결된 기기: ${deviceModel}`;
-
-                // ADB 객체를 전역에 저장하여 명령어 실행에 사용
-                window.adb = adb;
-
+                document.getElementById('connect-device').disabled = true;
+                document.getElementById('disconnect-device').disabled = false;
             } catch (error) {
-                console.error("ADB 연결 오류:", error);
-                alert("기기 연결에 실패했습니다.");
+                console.error("Error connecting to device:", error);
+                alert("Failed to connect to device.");
             }
         });
 
-        document.getElementById('execute-command').addEventListener('click', async () => {
-            const command = document.getElementById('command-input').value.trim();
+        document.getElementById('disconnect-device').addEventListener('click', () => {
+            adb = null;
+            document.getElementById('device-info').textContent = "Device Info: Not Connected";
+            document.getElementById('connect-device').disabled = false;
+            document.getElementById('disconnect-device').disabled = true;
+        });
 
-            // 명령어 입력 여부 확인
-            if (!command) {
-                alert("ADB 명령어를 입력하세요.");
+        document.getElementById('execute-command').addEventListener('click', async () => {
+            if (!adb) {
+                alert("Connect a device first.");
                 return;
             }
 
-            if (!window.adb) {
-                alert("기기가 연결되지 않았습니다. 먼저 '기기 연결'을 클릭하세요.");
+            const command = document.getElementById('command-input').value.trim();
+            if (!command) {
+                alert("Enter a command.");
                 return;
             }
 
             try {
-                // 명령어 실행
-                const output = await window.adb.shell(command);
-                document.getElementById('command-output').innerText = output;
+                const output = await adb.shell(command);
+                document.getElementById('output').textContent = `Command Output:\n${output}`;
             } catch (error) {
-                console.error("명령어 실행 오류:", error);
-                alert("명령어 실행 중 오류가 발생했습니다.");
+                console.error("Error executing command:", error);
+                alert("Failed to execute command.");
+            }
+        });
+
+        document.getElementById('file-upload').addEventListener('change', async (event) => {
+            if (!adb) {
+                alert("Connect a device first.");
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) {
+                alert("Select a file to upload.");
+                return;
+            }
+
+            try {
+                const path = `/sdcard/${file.name}`;
+                await adb.push(file.stream(), path);
+                alert(`File uploaded to ${path}`);
+            } catch (error) {
+                console.error("Error uploading file:", error);
+                alert("Failed to upload file.");
+            }
+        });
+
+        document.getElementById('download-file').addEventListener('click', async () => {
+            if (!adb) {
+                alert("Connect a device first.");
+                return;
+            }
+
+            const path = prompt("Enter file path to download:");
+            if (!path) return;
+
+            try {
+                const fileStream = await adb.pull(path);
+                const fileBlob = await new Response(fileStream).blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(fileBlob);
+                link.download = path.split('/').pop();
+                link.click();
+            } catch (error) {
+                console.error("Error downloading file:", error);
+                alert("Failed to download file.");
             }
         });
     </script>
